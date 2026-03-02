@@ -49,7 +49,7 @@ async def hilfe(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🤖 *Verfügbare Befehle:*\n\n"
         "/momentum - Aktuelles Momentum Release\n"
         "/unleashed - Aktuelles Unleashed Release\n"
-        "/protopirate - Link zur Protopirate Seite\n"
+        "/protopirate - Link zur gepachten Protopirate Fap\n"
         "/uptime - Laufzeit des Bots\n"
         "/hilfe - Diese Übersicht"
     )
