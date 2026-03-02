@@ -8,7 +8,7 @@ Dieser Bot wurde speziell für die Community von **[Flipper Zero Unofficial Germ
 Der Bot reagiert auf folgende Befehle:
 * `/momentum` – Zeigt das aktuellste Release der Momentum-Firmware.
 * `/unleashed` – Zeigt das aktuellste Release der Unleashed-Firmware.
-* `/protopirate` – Link zur Protopirate-Webseite.
+* `/protopirate` – Link zur gepachten Protpirate Fap.
 * `/uptime` – Zeigt an, wie lange der Bot bereits läuft.
 * `/hilfe` – Übersicht aller verfügbaren Befehle.
 
