@@ -7,11 +7,14 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constan
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from telegram.error import NetworkError, TimedOut, Conflict, TelegramError
 
+# Logging-Konfiguration
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+# Bibliotheks-Logs unterdrücken
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("telegram").setLevel(logging.WARNING)
 
@@ -53,6 +56,7 @@ def get_release_info(repo_path):
         link = data.get("html_url") or ""
         body = data.get("body") or ""
         
+        # Säubert den Text von HTML-Tags und kürzt auf 250 Zeichen
         clean_body = re.sub('<[^<]+?>', '', body)
         short_body = (clean_body[:250] + '...') if len(clean_body) > 250 else clean_body
         
@@ -67,10 +71,13 @@ def get_release_info(repo_path):
         return None
 
 async def send_release(update: Update, repo_key: str):
-    """Verarbeitet die Anfrage und sendet die Release-Details."""
+    """Sicherer Versand von Release-Details über effective_message."""
+    if not update.effective_message:
+        return
+
     data = get_release_info(REPOS[repo_key])
     if not data:
-        await update.message.reply_text("Die angeforderten Daten konnten derzeit nicht abgerufen werden (evtl. kein offizielles 'Latest' Release vorhanden).")
+        await update.effective_message.reply_text("Die angeforderten Daten konnten derzeit nicht abgerufen werden.")
         return
 
     text = (f"🚀 *{data['repo']} Update*\n\n"
@@ -81,13 +88,13 @@ async def send_release(update: Update, repo_key: str):
         [InlineKeyboardButton("📥 Release auf GitHub", url=data['link'])]
     ])
     
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         text, 
         parse_mode=constants.ParseMode.MARKDOWN, 
         reply_markup=reply_markup
     )
 
-# Command Handler
+# Command Handler mit Absicherung
 async def momentum(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_release(update, "momentum")
 
@@ -98,31 +105,34 @@ async def arf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_release(update, "arf")
 
 async def protopirate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🔗 [Protopirate - Flipper Zero Tools](https://ghcif.de/flipperzero/)", 
-        parse_mode=constants.ParseMode.MARKDOWN
-    )
+    if update.effective_message:
+        await update.effective_message.reply_text(
+            "🔗 [Protopirate - Flipper Zero Tools](https://ghcif.de/flipperzero/)", 
+            parse_mode=constants.ParseMode.MARKDOWN
+        )
 
 async def uptime(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    delta = datetime.datetime.now() - start_time
-    await update.message.reply_text(
-        f"🔋 *Laufzeit:* {delta.days}d {delta.seconds//3600}h {(delta.seconds//60)%60}m", 
-        parse_mode=constants.ParseMode.MARKDOWN
-    )
+    if update.effective_message:
+        delta = datetime.datetime.now() - start_time
+        await update.effective_message.reply_text(
+            f"🔋 *Laufzeit:* {delta.days}d {delta.seconds//3600}h {(delta.seconds//60)%60}m", 
+            parse_mode=constants.ParseMode.MARKDOWN
+        )
 
 async def hilfe(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = ("🤖 *Flipper Zero Release Bot*\n\n"
-                 "/momentum - Aktuelles Momentum Release\n"
-                 "/unleashed - Aktuelles Unleashed Release\n"
-                 "/arf - Aktuelles ARF Release\n"
-                 "/protopirate - Link zur gepachten Protopirate Fap\n"
-                 "/uptime - Laufzeit des Bots\n"
-                 "/hilfe - Diese Übersicht")
-    await update.message.reply_text(
-        help_text, 
-        parse_mode=constants.ParseMode.MARKDOWN, 
-        disable_web_page_preview=True
-    )
+    if update.effective_message:
+        help_text = ("🤖 *Flipper Zero Release Bot*\n\n"
+                     "/momentum - Aktuelles Momentum Release\n"
+                     "/unleashed - Aktuelles Unleashed Release\n"
+                     "/arf - Aktuelles ARF Release\n"
+                     "/protopirate - Link zur gepachten Protopirate Fap\n"
+                     "/uptime - Laufzeit des Bots\n"
+                     "/hilfe - Diese Übersicht")
+        await update.effective_message.reply_text(
+            help_text, 
+            parse_mode=constants.ParseMode.MARKDOWN, 
+            disable_web_page_preview=True
+        )
 
 if __name__ == '__main__':
     if not TOKEN:
