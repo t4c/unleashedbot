@@ -3,7 +3,7 @@ import requests
 import datetime
 import re
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants, LinkPreviewOptions
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from telegram.error import NetworkError, TimedOut, Conflict, TelegramError
 
@@ -13,14 +13,11 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
-
-# Bibliotheks-Logs unterdrücken
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("telegram").setLevel(logging.WARNING)
 
 TOKEN = os.getenv("TelegramToken", "").strip(" '\"")
 
-# Firmware Repository Konfiguration
 REPOS = {
     "momentum": "Next-Flip/Momentum-Firmware",
     "unleashed": "DarkFlippers/unleashed-firmware",
@@ -30,22 +27,12 @@ REPOS = {
 start_time = datetime.datetime.now()
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Zentrale Fehlerbehandlung für API- und Netzwerkfehler."""
     try:
         raise context.error
-    except TimedOut:
-        logger.error("Zeitüberschreitung bei der Verbindung zu den Telegram-Servern.")
-    except NetworkError as e:
-        logger.error(f"Netzwerkfehler festgestellt: {e.message}")
-    except Conflict:
-        logger.error("Konflikt: Eine andere Instanz des Bots ist bereits aktiv.")
-    except TelegramError as e:
-        logger.error(f"Ein Telegram-API-Fehler ist aufgetreten: {e.message}")
     except Exception as e:
-        logger.error(f"Unerwarteter Systemfehler: {e}", exc_info=True)
+        logger.error(f"Systemfehler: {e}", exc_info=True)
 
 def get_release_info(repo_path):
-    """Holt die neuesten Release-Informationen von der GitHub-API."""
     url = f"https://api.github.com/repos/{repo_path}/releases/latest"
     try:
         response = requests.get(url, timeout=10)
@@ -56,45 +43,50 @@ def get_release_info(repo_path):
         link = data.get("html_url") or ""
         body = data.get("body") or ""
         
-        # Säubert den Text von HTML-Tags und kürzt auf 250 Zeichen
+        # 1. HTML-Tags entfernen
         clean_body = re.sub('<[^<]+?>', '', body)
+        # 2. Markdown-Links [Text](URL) zu nur "Text" vereinfachen
+        clean_body = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', clean_body)
+        # 3. Rohe URLs entfernen (optional, für maximale Sauberkeit)
+        clean_body = re.sub(r'http[s]?://\S+', '', clean_body)
+        
         short_body = (clean_body[:250] + '...') if len(clean_body) > 250 else clean_body
         
         return {
             "name": name, 
             "link": link, 
-            "body": short_body, 
+            "body": short_body.strip(), 
             "repo": repo_path.split('/')[-1]
         }
     except Exception as e:
-        logger.error(f"Fehler beim Abrufen der GitHub-Daten für {repo_path}: {e}")
+        logger.error(f"GitHub API Fehler ({repo_path}): {e}")
         return None
 
 async def send_release(update: Update, repo_key: str):
-    """Sicherer Versand von Release-Details über effective_message."""
     if not update.effective_message:
         return
 
     data = get_release_info(REPOS[repo_key])
     if not data:
-        await update.effective_message.reply_text("Die angeforderten Daten konnten derzeit nicht abgerufen werden.")
+        await update.effective_message.reply_text("Daten konnten nicht abgerufen werden.")
         return
 
     text = (f"🚀 *{data['repo']} Update*\n\n"
             f"📦 *Version:* `{data['name']}`\n\n"
-            f"📝 *Changelog (Auszug):*\n_{data['body'] or 'Keine Beschreibung verfügbar.'}_")
+            f"📝 *Changelog (Auszug):*\n_{data['body'] or 'Keine Details verfügbar.'}_")
     
     reply_markup = InlineKeyboardMarkup([
         [InlineKeyboardButton("📥 Release auf GitHub", url=data['link'])]
     ])
     
+    # Hier wird die Link-Vorschau GLOBAL für diese Nachricht deaktiviert
     await update.effective_message.reply_text(
         text, 
         parse_mode=constants.ParseMode.MARKDOWN, 
-        reply_markup=reply_markup
+        reply_markup=reply_markup,
+        link_preview_options=LinkPreviewOptions(is_disabled=True)
     )
 
-# Command Handler mit Absicherung
 async def momentum(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_release(update, "momentum")
 
@@ -108,7 +100,8 @@ async def protopirate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_message:
         await update.effective_message.reply_text(
             "🔗 [Protopirate - Flipper Zero Tools](https://ghcif.de/flipperzero/)", 
-            parse_mode=constants.ParseMode.MARKDOWN
+            parse_mode=constants.ParseMode.MARKDOWN,
+            link_preview_options=LinkPreviewOptions(is_disabled=True)
         )
 
 async def uptime(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -131,12 +124,12 @@ async def hilfe(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text(
             help_text, 
             parse_mode=constants.ParseMode.MARKDOWN, 
-            disable_web_page_preview=True
+            link_preview_options=LinkPreviewOptions(is_disabled=True)
         )
 
 if __name__ == '__main__':
     if not TOKEN:
-        logger.critical("Bot-Token wurde nicht in den Umgebungsvariablen gefunden.")
+        logger.critical("Token fehlt.")
         exit(1)
 
     app = ApplicationBuilder().token(TOKEN).build()
@@ -149,5 +142,5 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("uptime", uptime))
     app.add_handler(CommandHandler("hilfe", hilfe))
 
-    logger.info("Bot-Instanz erfolgreich gestartet.")
+    logger.info("Bot-Instanz gestartet.")
     app.run_polling()
