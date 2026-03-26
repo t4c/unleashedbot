@@ -5,15 +5,10 @@ import re
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants, LinkPreviewOptions
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from telegram.error import NetworkError, TimedOut, Conflict, TelegramError
 
-# Logging-Konfiguration
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+# Logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("telegram").setLevel(logging.WARNING)
 
@@ -27,15 +22,63 @@ REPOS = {
 
 start_time = datetime.datetime.now()
 
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.error(f"Systemfehler: {context.error}", exc_info=True)
-
-def get_user_info(update: Update):
-    """Extrahiert den Usernamen oder Vornamen für die Logs."""
+def get_user_log_info(update: Update):
     user = update.effective_user
-    return user.username or user.first_name if user else "Unbekannt"
+    if not user: return "Unbekannter User"
+    name = user.first_name
+    username = f" (@{user.username})" if user.username else ""
+    return f"{name}{username} [ID: {user.id}]"
 
-async def get_release_info(repo_path):
+def clean_momentum_changelog(body):
+    """Zerlegt den Text in Sektionen und behält nur die relevanten Änderungen."""
+    if not body: return ""
+    
+    # Sektionen anhand von Markdown-Headern (##) aufteilen
+    sections = re.split(r'(?m)^##\s+', body)
+    relevant_parts = []
+    
+    blacklist_headers = ["download", "support", "donate", "donating", "install", "how to", "word"]
+    blacklist_content = ["ko-fi", "paypal", "btc", "eth", "1EnCi1", "spread the word"]
+
+    for section in sections:
+        lines = section.split('\n')
+        header = lines[0].lower().strip()
+        
+        # Sektion überspringen, wenn der Header auf der Blacklist steht
+        if any(word in header for word in blacklist_headers):
+            continue
+            
+        # Inhalt der Sektion säubern
+        section_content = []
+        for line in lines[1:]:
+            # Zeile überspringen, wenn sie Spenden-Kram enthält
+            if any(word in line.lower() for word in blacklist_content):
+                continue
+            section_content.append(line)
+            
+        clean_section = "\n".join(section_content).strip()
+        if clean_section:
+            relevant_parts.append(clean_section)
+
+    return "\n".join(relevant_parts).strip()
+
+def final_cleanup(text):
+    """Allgemeine Formatierung für alle Firmwares."""
+    # HTML entfernen
+    text = re.sub('<[^<]+?>', '', text)
+    # Markdown-Links [Text](URL) -> Text
+    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+    # Rohe URLs entfernen
+    text = re.sub(r'http[s]?://\S+', '', text)
+    # Markdown-Symbole entfernen, die im Telegram-Codeblock stören
+    text = text.replace('>', '').replace('#', '').replace('**', '').replace('__', '').strip()
+    # Mehrfache Zeilenumbrüche reduzieren
+    text = re.sub(r'\n\s*\n', '\n', text)
+    
+    return (text[:350] + '...') if len(text) > 350 else text
+
+async def get_release_info(repo_key):
+    repo_path = REPOS[repo_key]
     url = f"https://api.github.com/repos/{repo_path}/releases/latest"
     async with httpx.AsyncClient() as client:
         try:
@@ -43,19 +86,14 @@ async def get_release_info(repo_path):
             response.raise_for_status()
             data = response.json()
             
-            name = data.get("name") or "N/A"
-            link = data.get("html_url") or ""
-            body = data.get("body") or ""
-            
-            clean_body = re.sub('<[^<]+?>', '', body)
-            clean_body = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', clean_body)
-            clean_body = re.sub(r'http[s]?://\S+', '', clean_body)
-            short_body = (clean_body[:250] + '...') if len(clean_body) > 250 else clean_body
+            body = data.get("body", "")
+            if repo_key == "momentum":
+                body = clean_momentum_changelog(body)
             
             return {
-                "name": name, 
-                "link": link, 
-                "body": short_body.strip(), 
+                "name": data.get("name") or "N/A",
+                "link": data.get("html_url") or "",
+                "body": final_cleanup(body),
                 "repo": repo_path.split('/')[-1]
             }
         except Exception as e:
@@ -63,17 +101,13 @@ async def get_release_info(repo_path):
             return None
 
 async def send_release(update: Update, repo_key: str):
-    if not update.effective_message:
-        return
-
-    user_info = get_user_info(update)
-    logger.info(f"Befehl /{repo_key} von {user_info} empfangen.")
-
+    if not update.effective_message: return
+    logger.info(f"Befehl /{repo_key} von {get_user_log_info(update)} empfangen.")
     await update.effective_chat.send_action(action=constants.ChatAction.TYPING)
     
-    data = await get_release_info(REPOS[repo_key])
+    data = await get_release_info(repo_key)
     if not data:
-        await update.effective_message.reply_text("Fehler beim Abrufen der GitHub-Daten.")
+        await update.effective_message.reply_text("Daten konnten nicht abgerufen werden.")
         return
 
     text = (f"🚀 *{data['repo']} Update*\n\n"
@@ -81,65 +115,39 @@ async def send_release(update: Update, repo_key: str):
             f"📝 *Changelog (Auszug):*\n_{data['body'] or 'Keine Details verfügbar.'}_")
     
     reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("📥 Release auf GitHub", url=data['link'])]])
-    
     await update.effective_message.reply_text(
-        text, 
-        parse_mode=constants.ParseMode.MARKDOWN, 
-        reply_markup=reply_markup,
+        text, parse_mode=constants.ParseMode.MARKDOWN, reply_markup=reply_markup,
         link_preview_options=LinkPreviewOptions(is_disabled=True)
     )
 
-async def momentum(update: Update, context: ContextTypes.DEFAULT_TYPE): await send_release(update, "momentum")
-async def unleashed(update: Update, context: ContextTypes.DEFAULT_TYPE): await send_release(update, "unleashed")
-async def arf(update: Update, context: ContextTypes.DEFAULT_TYPE): await send_release(update, "arf")
+# Handlers
+async def momentum(u, c): await send_release(u, "momentum")
+async def unleashed(u, c): await send_release(u, "unleashed")
+async def arf(u, c): await send_release(u, "arf")
 
-async def protopirate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_message:
-        logger.info(f"Befehl /protopirate von {get_user_info(update)} empfangen.")
-        await update.effective_message.reply_text(
-            "🔗 [Protopirate - Flipper Zero Tools](https://ghcif.de/flipperzero/)", 
-            parse_mode=constants.ParseMode.MARKDOWN,
-            link_preview_options=LinkPreviewOptions(is_disabled=True)
-        )
+async def protopirate(update, context):
+    logger.info(f"Befehl /protopirate von {get_user_log_info(update)} empfangen.")
+    await update.effective_message.reply_text("🔗 [Protopirate - Flipper Zero Tools](https://ghcif.de/flipperzero/)", 
+        parse_mode=constants.ParseMode.MARKDOWN, link_preview_options=LinkPreviewOptions(is_disabled=True))
 
-async def uptime(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_message:
-        logger.info(f"Befehl /uptime von {get_user_info(update)} empfangen.")
-        delta = datetime.datetime.now() - start_time
-        await update.effective_message.reply_text(
-            f"🔋 *Laufzeit:* {delta.days}d {delta.seconds//3600}h {(delta.seconds//60)%60}m", 
-            parse_mode=constants.ParseMode.MARKDOWN
-        )
+async def uptime(update, context):
+    logger.info(f"Befehl /uptime von {get_user_log_info(update)} empfangen.")
+    delta = datetime.datetime.now() - start_time
+    await update.effective_message.reply_text(f"🔋 *Laufzeit:* {delta.days}d {delta.seconds//3600}h {(delta.seconds//60)%60}m", parse_mode=constants.ParseMode.MARKDOWN)
 
-async def hilfe(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_message:
-        logger.info(f"Befehl /hilfe von {get_user_info(update)} empfangen.")
-        help_text = ("🤖 *Flipper Zero Release Bot*\n\n"
-                     "/momentum - Aktuelles Momentum Release\n"
-                     "/unleashed - Aktuelles Unleashed Release\n"
-                     "/arf - Aktuelles ARF Release\n"
-                     "/protopirate - Link zur gepachten Protopirate Fap\n"
-                     "/uptime - Laufzeit des Bots\n"
-                     "/hilfe - Diese Übersicht")
-        await update.effective_message.reply_text(
-            help_text, 
-            parse_mode=constants.ParseMode.MARKDOWN, 
-            link_preview_options=LinkPreviewOptions(is_disabled=True)
-        )
+async def hilfe(update, context):
+    logger.info(f"Befehl /hilfe von {get_user_log_info(update)} empfangen.")
+    help_text = ("🤖 *Flipper Zero Release Bot*\n\n/momentum\n/unleashed\n/arf\n/protopirate\n/uptime\n/hilfe")
+    await update.effective_message.reply_text(help_text, parse_mode=constants.ParseMode.MARKDOWN, link_preview_options=LinkPreviewOptions(is_disabled=True))
 
 if __name__ == '__main__':
-    if not TOKEN:
-        exit(1)
-
+    if not TOKEN: exit(1)
     app = ApplicationBuilder().token(TOKEN).build()
-    app.add_error_handler(error_handler)
-
     app.add_handler(CommandHandler("momentum", momentum))
     app.add_handler(CommandHandler("unleashed", unleashed))
     app.add_handler(CommandHandler("arf", arf))
     app.add_handler(CommandHandler("protopirate", protopirate))
     app.add_handler(CommandHandler("uptime", uptime))
     app.add_handler(CommandHandler("hilfe", hilfe))
-
-    logger.info("Bot-Instanz erfolgreich gestartet.")
+    logger.info("Bot gestartet.")
     app.run_polling()
