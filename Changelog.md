@@ -1,5 +1,9 @@
 # Changelog - Flipper Zero Release Bot
 
+## [1.4.6] - 2026-03-27
+### Hinzugefügt
+- Sync ProtoPirate Release mit version.json (als Changelog Ersatz)
+
 ## [1.2.0] - 2026-03-27
 ### Hinzugefügt
 - **Intelligenter Momentum-Filter:** Zerlegt Changelogs in Sektionen (##) und entfernt automatisch Downloads, Support-Aufrufe und Spenden-Links (Ko-fi, PayPal, BTC).
