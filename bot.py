@@ -23,6 +23,9 @@ REPOS = {
 
 start_time = datetime.datetime.now()
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.error("Ein Fehler ist aufgetreten: %s", context.error)
+
 def get_user_log_info(update: Update):
     user = update.effective_user
     if not user: return "Unbekannter User"
@@ -66,7 +69,7 @@ async def get_release_info(repo_key):
             if repo_key == "momentum": body = clean_momentum_changelog(body)
             return {"name": data.get("name") or "N/A", "link": data.get("html_url") or "", "body": final_cleanup(body), "repo": repo_path.split('/')[-1]}
         except Exception as e:
-            logger.error(f"GitHub API Fehler ({repo_path}): {e}")
+            logger.error("GitHub API Fehler (%s): %s", repo_path, e)
             return None
 
 async def get_protopirate_custom_info():
@@ -76,12 +79,12 @@ async def get_protopirate_custom_info():
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            logger.error(f"Abfrage version.json fehlgeschlagen: {e}")
+            logger.error("Abfrage version.json fehlgeschlagen: %s", e)
             return None
 
 async def send_release(update: Update, repo_key: str):
     if not update.effective_message: return
-    logger.info(f"Befehl /{repo_key} von {get_user_log_info(update)} empfangen.")
+    logger.info("Befehl /%s von %s empfangen.", repo_key, get_user_log_info(update))
     await update.effective_chat.send_action(action=constants.ChatAction.TYPING)
     data = await get_release_info(repo_key)
     if not data:
@@ -97,31 +100,33 @@ async def arf(u, c): await send_release(u, "arf")
 
 async def protopirate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_message: return
-    logger.info(f"Befehl /protopirate von {get_user_log_info(update)} empfangen.")
+    logger.info("Befehl /protopirate von %s empfangen.", get_user_log_info(update))
     await update.effective_chat.send_action(action=constants.ChatAction.TYPING)
     data = await get_protopirate_custom_info()
     if data:
-        text = (f"🏴‍☠️ *ProtoPirate Build*\n\n"
-                f"📦 *Version:* `{data.get('version', 'N/A')}`\n"
-                f"📅 *Erstellt am:* {data.get('build_time', 'Unbekannt')}")
+        v = data.get('version', 'N/A')
+        t = data.get('build_time', 'Unbekannt')
+        text = f"🏴‍☠️ *ProtoPirate Build*\n\n📦 *Version:* `{v}`\n📅 *Erstellt am:* {t}"
     else:
         text = "🏴‍☠️ *ProtoPirate*\n\nHier findest du die aktuellsten FAPs inklusive Emulation-Patch."
+
     reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("📥 Download (ghcif.de)", url=PROTOPIRATE_DOWNLOAD)]])
     await update.effective_message.reply_text(text, parse_mode=constants.ParseMode.MARKDOWN, reply_markup=reply_markup, link_preview_options=LinkPreviewOptions(is_disabled=True))
 
 async def uptime(update, context):
-    logger.info(f"Befehl /uptime von {get_user_log_info(update)} empfangen.")
+    logger.info("Befehl /uptime von %s empfangen.", get_user_log_info(update))
     delta = datetime.datetime.now() - start_time
     await update.effective_message.reply_text(f"🔋 *Laufzeit:* {delta.days}d {delta.seconds//3600}h {(delta.seconds//60)%60}m", parse_mode=constants.ParseMode.MARKDOWN)
 
 async def hilfe(update, context):
-    logger.info(f"Befehl /hilfe von {get_user_log_info(update)} empfangen.")
+    logger.info("Befehl /hilfe von %s empfangen.", get_user_log_info(update))
     help_text = "🤖 *Flipper Zero Release Bot*\n\n/momentum\n/unleashed\n/arf\n/protopirate\n/uptime\n/hilfe"
     await update.effective_message.reply_text(help_text, parse_mode=constants.ParseMode.MARKDOWN, link_preview_options=LinkPreviewOptions(is_disabled=True))
 
 if __name__ == '__main__':
     if not TOKEN: exit(1)
     app = ApplicationBuilder().token(TOKEN).build()
+    app.add_error_handler(error_handler)
     app.add_handler(CommandHandler("momentum", momentum))
     app.add_handler(CommandHandler("unleashed", unleashed))
     app.add_handler(CommandHandler("arf", arf))

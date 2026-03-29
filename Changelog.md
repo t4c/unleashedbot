@@ -1,5 +1,10 @@
 # Changelog - Flipper Zero Release Bot
 
+## [1.4.7] - 2026-03-29
+- Globalen error_handler hinzugefügt.
+- Abfanglogik für NetworkError (Bad Gateway) eingebaut.
+
+
 ## [1.4.6] - 2026-03-27
 ### Hinzugefügt
 - Sync ProtoPirate Release mit version.json (als Changelog Ersatz)
