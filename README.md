@@ -10,7 +10,7 @@ Der Bot reagiert auf folgende Befehle:
 * `/momentum` – Aktuellstes Release der Momentum-Firmware (inkl. Sektions-Filter).
 * `/unleashed` – Aktuellstes Release der Unleashed-Firmware.
 * `/arf` – Aktuellstes Release der ARF-Firmware.
-* `/protopirate` – Link zu den Flipper Zero Tools (ghcif.de).
+* `/protopirate` – Aktuelle ProtoPirate FAPs inklusive Changelog-Extraktion.
 * `/uptime` – Zeigt die aktuelle Laufzeit des Bots.
 * `/hilfe` – Übersicht aller verfügbaren Befehle.
 
@@ -27,6 +27,16 @@ Die gesamte Entwicklungshistorie und alle Neuerungen findest du im [Changelog](C
    ```bash
    docker compose up -d --build
    ```
+
+## 🏴‍☠️ Build Bridge (ProtoPirate)
+Der Bot bezieht Informationen über ProtoPirate von einer öffentlichen JSON-URL. Um den Build und die Bridge zu automatisieren:
+
+1. Nutze das mitgelieferte `piratebuild.sh` auf deinem Build-Server.
+2. Passe die Variablen `USER_NAME`, `REPO_PATH` und `WEB_ROOT` im Script an.
+3. Richte einen Cronjob ein (Beispiel für alle 6 Stunden):
+   `0 */6 * * * /home/user/scripts/piratebuild.sh > /dev/null 2>&1`
+
+Das Script erledigt das Kompilieren, Patchen der Emulation-Features und das Update der Bridge-Datei vollautomatisch.
 
 ---
 *Entwickelt für Flipper Zero Unofficial Germany.*

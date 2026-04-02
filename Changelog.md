@@ -1,5 +1,11 @@
 # Changelog - Flipper Zero Release Bot
 
+## [1.4.9] - 2026-04-02
+- Patching-Logik im piratebuild.sh vereinfacht und Pfade neutralisiert.
+- Bot-Ausgabe für ProtoPirate auf 'Changelog (Auszug)' vereinheitlicht.
+- README.md um Konfigurationsanleitung für die Build-Bridge erweitert.
+
+
 ## [1.4.7] - 2026-03-29
 - Globalen error_handler hinzugefügt.
 - Abfanglogik für NetworkError (Bad Gateway) eingebaut.

@@ -24,7 +24,7 @@ REPOS = {
 start_time = datetime.datetime.now()
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.error("Ein Fehler ist aufgetreten: %s", context.error)
+    logger.error("Globaler Bot-Fehler: %s", context.error)
 
 def get_user_log_info(update: Update):
     user = update.effective_user
@@ -50,6 +50,7 @@ def clean_momentum_changelog(body):
     return "\n".join(relevant_parts).strip()
 
 def final_cleanup(text):
+    if not text: return ""
     text = re.sub('<[^<]+?>', '', text)
     text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
     text = re.sub(r'http[s]?://\S+', '', text)
@@ -106,7 +107,11 @@ async def protopirate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data:
         v = data.get('version', 'N/A')
         t = data.get('build_time', 'Unbekannt')
-        text = f"🏴‍☠️ *ProtoPirate Build*\n\n📦 *Version:* `{v}`\n📅 *Erstellt am:* {t}"
+        c = data.get('changelog', 'Keine Details verfügbar.')
+        text = (f"🏴‍☠️ *ProtoPirate Build*\n\n"
+                f"📦 *Version:* `{v}`\n"
+                f"📅 *Erstellt am:* {t}\n\n"
+                f"📝 *Changelog (Auszug):*\n_{final_cleanup(c)}_")
     else:
         text = "🏴‍☠️ *ProtoPirate*\n\nHier findest du die aktuellsten FAPs inklusive Emulation-Patch."
 
@@ -133,5 +138,5 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("protopirate", protopirate))
     app.add_handler(CommandHandler("uptime", uptime))
     app.add_handler(CommandHandler("hilfe", hilfe))
-    logger.info("Bot gestartet.")
+    logger.info("Bot v1.4.9 gestartet.")
     app.run_polling()
