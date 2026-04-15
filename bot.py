@@ -6,11 +6,13 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants, LinkPreviewOptions
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
+# Logging Konfiguration
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("telegram").setLevel(logging.WARNING)
 
+# Konfiguration
 TOKEN = os.getenv("TelegramToken", "").strip(" '\"")
 PROTOPIRATE_JSON = "https://ghcif.de/flipperzero/version.json"
 PROTOPIRATE_DOWNLOAD = "https://ghcif.de/flipperzero/"
@@ -24,6 +26,7 @@ REPOS = {
 start_time = datetime.datetime.now()
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Fängt globale Fehler ab, damit der Bot nicht abschmiert."""
     logger.error("Globaler Bot-Fehler: %s", context.error)
 
 def get_user_log_info(update: Update):
@@ -31,32 +34,25 @@ def get_user_log_info(update: Update):
     if not user: return "Unbekannter User"
     name = user.first_name
     username = f" (@{user.username})" if user.username else ""
-    return f"{name}{username} [ID: {user.id}]"
-
-def clean_momentum_changelog(body):
-    if not body: return ""
-    sections = re.split(r'(?m)^##\s+', body)
-    relevant_parts = []
-    blacklist_headers = ["download", "support", "donate", "donating", "install", "how to", "word"]
-    blacklist_content = ["ko-fi", "paypal", "btc", "eth", "1EnCi1", "spread the word"]
-
-    for section in sections:
-        lines = section.split('\n')
-        header = lines[0].lower().strip()
-        if any(word in header for word in blacklist_headers): continue
-        section_content = [line for line in lines[1:] if not any(word in line.lower() for word in blacklist_content)]
-        clean_section = "\n".join(section_content).strip()
-        if clean_section: relevant_parts.append(clean_section)
-    return "\n".join(relevant_parts).strip()
+    chat_type = update.effective_chat.type if update.effective_chat else "unbekannt"
+    return f"{name}{username} [ID: {user.id}] im {chat_type}"
 
 def final_cleanup(text):
     if not text: return ""
+    text = str(text)
+    # HTML-Tags entfernen
     text = re.sub('<[^<]+?>', '', text)
+    # Markdown-Links auflösen
     text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+    # URLs entfernen
     text = re.sub(r'http[s]?://\S+', '', text)
-    text = text.replace('>', '').replace('#', '').replace('**', '').replace('__', '').strip()
+    # Alle kritischen Markdown-Sonderzeichen rigoros löschen
+    for char in ['_', '*', '`', '[', ']', '(', ')', '{', '}', '~', '>', '#', '+', '-', '.', '!']:
+        text = text.replace(char, '')
+    text = text.strip()
+    # Mehrfache Zeilenumbrüche reduzieren
     text = re.sub(r'\n\s*\n', '\n', text)
-    return (text[:350] + '...') if len(text) > 350 else text
+    return text
 
 async def get_release_info(repo_key):
     repo_path = REPOS[repo_key]
@@ -67,8 +63,13 @@ async def get_release_info(repo_key):
             response.raise_for_status()
             data = response.json()
             body = data.get("body", "")
-            if repo_key == "momentum": body = clean_momentum_changelog(body)
-            return {"name": data.get("name") or "N/A", "link": data.get("html_url") or "", "body": final_cleanup(body), "repo": repo_path.split('/')[-1]}
+            
+            name = final_cleanup(data.get("name") or "N/A")
+            repo_name = final_cleanup(repo_path.split('/')[-1])
+            clean_body = final_cleanup(body)
+            if len(clean_body) > 300: clean_body = clean_body[:300] + "..."
+            
+            return {"name": name, "link": data.get("html_url") or "", "body": clean_body, "repo": repo_name}
         except Exception as e:
             logger.error("GitHub API Fehler (%s): %s", repo_path, e)
             return None
@@ -105,13 +106,14 @@ async def protopirate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_chat.send_action(action=constants.ChatAction.TYPING)
     data = await get_protopirate_custom_info()
     if data:
-        v = data.get('version', 'N/A')
-        t = data.get('build_time', 'Unbekannt')
-        c = data.get('changelog', 'Keine Details verfügbar.')
+        v = final_cleanup(data.get('version', 'N/A'))
+        t = final_cleanup(data.get('build_time', 'Unbekannt'))
+        c = final_cleanup(data.get('changelog', 'Keine Details verfügbar.'))
+        if len(c) > 300: c = c[:300] + "..."
         text = (f"🏴‍☠️ *ProtoPirate Build*\n\n"
                 f"📦 *Version:* `{v}`\n"
                 f"📅 *Erstellt am:* {t}\n\n"
-                f"📝 *Changelog (Auszug):*\n_{final_cleanup(c)}_")
+                f"📝 *Changelog (Auszug):*\n_{c}_")
     else:
         text = "🏴‍☠️ *ProtoPirate*\n\nHier findest du die aktuellsten FAPs inklusive Emulation-Patch."
 
@@ -138,5 +140,5 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("protopirate", protopirate))
     app.add_handler(CommandHandler("uptime", uptime))
     app.add_handler(CommandHandler("hilfe", hilfe))
-    logger.info("Bot v1.4.9 gestartet.")
+    logger.info("Bot v1.4.10 gestartet.")
     app.run_polling()

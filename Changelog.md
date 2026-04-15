@@ -1,5 +1,10 @@
 # Changelog - Flipper Zero Release Bot
 
+## [1.4.10] - 2026-04-14
+- Markdown-Parsing Fehler behoben durch radikale Bereinigung von Sonderzeichen.
+- Bot-Version auf 1.4.10 angehoben.
+
+
 ## [1.4.9] - 2026-04-02
 - Patching-Logik im piratebuild.sh vereinfacht und Pfade neutralisiert.
 - Bot-Ausgabe für ProtoPirate auf 'Changelog (Auszug)' vereinheitlicht.
